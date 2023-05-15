@@ -3,12 +3,12 @@ import os
 from dotenv import load_dotenv
 
 import discord
-from discord import FFmpegPCMAudio, VoiceClient
+from discord import FFmpegAudio, VoiceClient
 from discord.utils import get
 from discord.ext import commands
 from discord import TextChannel
 
-from youtube_dl import YoutubeDL
+import yt_dlp
 import asyncio
 from urllib import parse, request
 import re
@@ -31,22 +31,18 @@ async def ping(ctx):
 
 @bot.command()
 async def join(ctx):
-    channel = ctx.message.author.voice.channel
-    voice = get(bot.voice_clients, guild=ctx.guild)
-    if voice and voice.is_connected():
-        await voice.move_to()
-    else:
-        await voice.connect(reconnect=True)
-
-# async def download_video_to_pass(ctx, url):
-
-        # while voice.is_playing():
-        #     await asyncio.sleep(1)
-        # await voice.disconnect()
-        # reproducir el audio en Discord
-        
-
-            # espera a que termine de reproducirse el audio antes de desconectar el bot
+    voice_channel = ctx.author.voice.channel
+    try:
+        voice = await voice_channel.connect(reconnect=True)
+    except NameError as errors:
+    print(bot.voice_clients)
+    if voice.is_connected():
+        await voice.move_to(voice_channel)
+        await ctx.send("jeje")
+    #     voice_channel = ctx.author.voice.channel
+    #     await voice.move_to(voice_channel)
+    # else:
+    #     await voice_channel.connect(reconnect=True)
 
 @bot.command()
 async def play(ctx, *, search):
@@ -60,28 +56,29 @@ async def play(ctx, *, search):
     search_results = re.findall(r'watch\?v=(\S{11})',html_content.read().decode())
     await ctx.send("https://www.youtube.com/watch?v=" + search_results[0])
     url = "https://www.youtube.com/watch?v=" + search_results[0]
-    YDL_OPTIONS = {'format': 'bestaudio',
+    YDL_OPTIONS = {'format': 'm4a/bestaudio/best',
                    'noplaylist': 'True',
                    'postprocessors': [{
                         'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '192',
+                        'preferredcodec': 'm4a',
     }]}
-    FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 
-    'options': '-vn'
-    }
+    # FFMPEG_OPTIONS = {
+    # 'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 
+    # 'options': '-vn'
+    # }
+    ARGS = ['-vn', '-b:a', '128k', '-ar', '48000', '-ac', '2']
     voice = get(bot.voice_clients, guild=ctx.guild)
-    with YoutubeDL(YDL_OPTIONS) as ydl:
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         info = ydl.extract_info(url, download=False)
-    URL = info['url']
-    voice.play(FFmpegPCMAudio(URL, **FFMPEG_OPTIONS))
-    voice.is_playing()
-    await ctx.message.add_reaction('🎵') # reaccion para confirmar que se está reproduciendo la canción
-
+    audio_url = info['url']
+    VoiceClient.play(source=FFmpegAudio(audio_url, args=ARGS))
+    if voice.is_playing():
+        ctx.send(await ctx.message.add_reaction('🎵')) # reaccion para confirmar que se está reproduciendo la canción
+    else:
+        ctx.send("ERROR")
     # download_video_to_pass(ctx, url=url)
 
 bot.run(discord_token)
-
+# , **FFMPEG_OPTIONS
 # python src/index.py
 # extract_info
