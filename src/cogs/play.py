@@ -30,7 +30,7 @@ class MusicPlayerState(Enum):
 class PlayerBotMusic(commands.Cog):
     def __init__(self, client:commands.Bot):
       self.client = client
-      self.state = MusicPlayerState.STOPPED
+      self.state = MusicPlayerState.DEAD
       self.voice_client = None
 
     @commands.command()
@@ -44,41 +44,43 @@ class PlayerBotMusic(commands.Cog):
                                 'preferredcodec': 'opus',
             }]}
       
-
       if not ctx.author.voice:
           await ctx.send("You are not connected to a voice channel.")
 
 
-      """Obtenemos el chat de voz del autor que mando el mensaje y luego conectamos"""
-
-      if self.state == MusicPlayerState.STOPPED:
+      """Si el estado esta en STOPPED no """
+      if self.state == MusicPlayerState.DEAD:
         voice_channel = ctx.author.voice.channel
         self.voice_client = await voice_channel.connect()
         self.state = MusicPlayerState.PLAYING
+
+
       #Convierte search en una consulta lista para mandar a una URL para realizar una búsqueda en Youtube.
       query_string = parse.urlencode({'search_query': self.search})
 
-
       #en request pido todos los videos que se parezcan a querystring
       html_content = request.urlopen(f'http://www.youtube.com/results?search_query={query_string}')
-
 
       #En esta busco en el html recibido cual es el link de watch para enviarlo en el ctx.send
       search_results = re.findall(r'watch\?v=(\S{11})',html_content.read().decode())
       await ctx.send("https://www.youtube.com/watch?v=" + search_results[0])
       url = "https://www.youtube.com/watch?v=" + search_results[0]
 
-      
-      voice = get(self.client.voice_clients, guild=ctx.guild)
+
+      """Llamos a la libreria, extraemos la info de la url y mandamos a que reproduzca el audio"""
       with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
           info = ydl.extract_info(url, download=False)
           audio_url = info['url']
           source = await discord.FFmpegOpusAudio.from_probe(audio_url, method="fallback")
       self.voice_client.play(source=source)
+
+
+      voice = get(self.client.voice_clients, guild=ctx.guild)
       if voice.is_playing():
           ctx.send(await ctx.message.add_reaction('🎵')) # reaccion para confirmar que se está reproduciendo la canción
       else:
           ctx.send("ERROR") 
+
 
 
     @commands.command()
@@ -89,10 +91,12 @@ class PlayerBotMusic(commands.Cog):
       
       if self.voice_client is None:
         self.voice_client = await voice_channel.connect()
+        self.state = MusicPlayerState.WAITING
 
       else:
          await self.voice_client.move_to(voice_channel)
       
+
 
     @commands.command()
     async def leave(self, ctx):
@@ -101,7 +105,30 @@ class PlayerBotMusic(commands.Cog):
       else:
         if self.voice_client:
           await self.voice_client.disconnect(force=True)
+          self.state = MusicPlayerState.DEAD
 
 
+
+    @commands.command()
+    async def stop(self, ctx):
+      if not ctx.author.voice:
+          await ctx.send("You are not connected to a voice channel.")
+
+      if self.voice_client and self.state == MusicPlayerState.PLAYING:
+        self.voice_client.stop()
+        self.state = MusicPlayerState.STOPPED
+
+      elif self.state == MusicPlayerState.STOPPED:
+         ctx.send("No hay nada reproduciendose UwU")
+
+    @commands.command()
+    async def resume(self, ctx):
+        if not ctx.author.voice:
+          await ctx.send("You are not connected to a voice channel.")
+
+        if self.state == MusicPlayerState.STOPPED:
+          self.voice_client.resume()
+          self.state = MusicPlayerState.PLAYING
+        
 async def setup(client:commands.Bot) -> None:
   await client.add_cog(PlayerBotMusic(client))
